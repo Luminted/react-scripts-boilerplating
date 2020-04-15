@@ -82,10 +82,10 @@ function tryGitCommit(appPath) {
 }
 
 module.exports = function(
-  appPath,
+  appPath, // root of created app folder
   appName,
   verbose,
-  originalDirectory,
+  originalDirectory, // root where it was initiated
   templateName
 ) {
   const appPackage = require(path.join(appPath, 'package.json'));
@@ -387,6 +387,110 @@ module.exports = function(
   }
   console.log();
   console.log('Happy hacking!');
+
+  console.log(
+    chalk.magenta('==============================','CUSTOM REACT SCRIPTS', '=========================')
+  );
+  console.log(chalk.green('Setting up monorepo'));
+
+  // +++ moving generated react app and clean up
+  console.log('\tMoving React client to /client');
+  const FilesAndDirsToMove = [ 'package.json', useYarn? 'yarn.lock' : 'package-lock.json']
+  if(!fs.existsSync(path.join(appPath, 'client'))){
+    fs.mkdirSync(path.join(appPath, 'client'));
+  }
+  const clientDirectory = path.join(appPath, 'client');
+  for(const name of FilesAndDirsToMove){
+    fs.moveSync(path.join(appPath, name), path.join(clientDirectory, name));
+  }
+
+  fs.removeSync(path.join(appPath, 'node_modules'));
+  // +++ +++ +++ ++ +++
+
+  //+++ setting up packages defined in template.json
+  const packages = templateJson.packages;
+  const packageNames = Object.keys(packages)
+  packageNames.forEach(packageName => {
+    console.log(chalk.green(`setting up package ${packageName}`));
+    const dependencies = packages[packageName].dependencies || {};
+    const devDependecies = packages[packageName].devDependencies || {};
+    const packageRoot = path.join(appPath, packageName);
+    const packageJsonPath = path.join(packageRoot, 'package.json');
+    const gitignorePath = path.join(packageRoot, 'gitignore');
+    let packageJson;
+    if(fs.existsSync(packageJsonPath)){
+      packageJson = require(packageJsonPath);
+      packageJson.name = packageName;
+    }else{
+      console.log('\tNo package.json found ...generating one');
+      packageJson = {
+        name: packageName,
+        version: '0.1.0',
+        private: true,
+        scripts: {}
+      }
+    }
+    if(fs.exists(gitignorePath)){
+      console.log('\tgitignore file found ...renaming to .gitignore');
+      fs.moveSync(gitignorePath, path.join(packageRoot, '.gitignore'));
+    }
+    if(!packageJson.dependencies) packageJson.dependencies = {};
+    if(!packageJson.devDependecies) packageJson.devDependecies = {};
+    Object.assign(packageJson.dependencies, dependencies);
+    Object.assign(packageJson.devDependecies, devDependecies);
+    fs.writeFileSync(
+      packageJsonPath, 
+      JSON.stringify(packageJson, null, 2) + os.EOL
+      );
+  })
+
+  //+++ setting up orchestration tools
+  //+++ installing dev dependencies from here on
+  if (useYarn) {
+    args = ['add', '--dev'];
+  } else {
+    args = ['install', '--save-dev', verbose && '--verbose'].filter(e => e);
+  }
+
+  console.log(chalk.green('Setting up orchestration tools...'));
+
+  //+++ creating root package.json
+  const lernaScripts = ['bootstrap'];
+  const lernaRunScripts = ['start'];
+  const packageJson = {
+    name: appName,
+    version: '0.1.0',
+    private: true,
+    scripts: {}
+  };
+  lernaScripts.forEach(name => packageJson.scripts[name] = `lerna ${name}`);
+  lernaRunScripts.forEach(name => packageJson.scripts[name] = `lerna run ${name}`);
+  fs.writeFileSync(
+    path.join(appPath, 'package.json'),
+    JSON.stringify(packageJson, null, 2) + os.EOL
+  );
+
+  //+++ setup lerna
+  let ownProc = spawn.sync(command, args.concat('lerna'), { stdio: 'inherit' });
+    if (ownProc.status !== 0) {
+      console.error(`\`${command} ${args.concat('lerna').join(' ')}\` failed`);
+      return;
+    }
+
+  const lernaJSON = {
+    version: "0.1.0",
+    packages: packageNames
+  };
+
+  fs.writeFileSync(path.join(appPath, 'lerna.json'), JSON.stringify(lernaJSON, null, 2) + os.EOL);
+  console.log(chalk.green('bootstrapping packages with lerna'));
+  ownProc = spawn.sync(command, ['run', 'bootstrap'], { stdio: 'inherit' });
+  if (ownProc.status !== 0) {
+    console.error(`\`${command} ${args.concat('lerna').join(' ')}\` failed`);
+    return;
+  }
+
+  console.log(chalk.green('Monorepo setup complete!'));
 };
 
 function isReactInstalled(appPackage) {

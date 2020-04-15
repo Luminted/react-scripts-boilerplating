@@ -1,12 +1,7 @@
 {
-  "name": "react-scripts",
-  "version": "3.4.1",
-  "description": "Configuration and scripts for Create React App.",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/facebook/create-react-app.git",
-    "directory": "packages/react-scripts"
-  },
+  "name": "@benestudioco/react-scripts",
+  "version": "3.4.2",
+  "description": "A customization of the configuration and scripts for Create React App.",
   "license": "MIT",
   "engines": {
     "node": ">=8.10"
